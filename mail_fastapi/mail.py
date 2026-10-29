@@ -8,14 +8,14 @@ import telebot
 import re
 import requests
 import asyncio
-import os  # API anahtarını güvenli çekmek için eklendi
+import os
 
 # --- AYARLAR ---
 BOT_TOKEN = "8383211881:AAF5Vi78HrS29DwMQz4RIME2e2jgYp9Xg6w"
 DOMAIN = "tekotpmail.xyz"
 RENDER_URL = "https://temp-mail-v2-dpwj.onrender.com"
 
-# DİKKAT: Şifreyi buraya yazmıyoruz. Render -> Environment kısmından çekecek!
+# Şifre Render Environment'tan (çevre değişkenlerinden) çekiliyor
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
 
 app = FastAPI()
@@ -88,23 +88,23 @@ async def resend_webhook(request: Request):
         konu = mail_detay.get("subject", "Konu Yok")
         icerik = mail_detay.get("text") or mail_detay.get("html")
         
-        # Eğer içerik yoksa, API Key ayarlanmışsa Resend API'den içeriği çek
+        # Resend'in 404 (Geç kalma) hatasını önlemek için 4 tekrarlı ısrar döngüsü
         if (not icerik or icerik == "Mail içeriği boş.") and email_id and RESEND_API_KEY:
-            await asyncio.sleep(2) # Resend'in maili işlemesi için 2 saniye bekle
-            try:
-                headers = {"Authorization": f"Bearer {RESEND_API_KEY}"}
-                r = requests.get(f"https://api.resend.com/emails/{email_id}", headers=headers, timeout=10)
-                if r.status_code == 200:
-                    email_verisi = r.json()
-                    icerik = email_verisi.get("text") or email_verisi.get("html")
-                else:
-                    print(f"[-] API Hatası: {r.status_code} - {r.text}")
-            except Exception as e:
-                print(f"[-] Resend API Bağlantı Hatası: {e}")
+            for deneme in range(4):
+                await asyncio.sleep(3) # Her denemede 3 saniye bekle
+                try:
+                    headers = {"Authorization": f"Bearer {RESEND_API_KEY}"}
+                    r = requests.get(f"https://api.resend.com/emails/{email_id}", headers=headers, timeout=10)
+                    if r.status_code == 200:
+                        email_verisi = r.json()
+                        icerik = email_verisi.get("text") or email_verisi.get("html")
+                        if icerik:
+                            break # İçeriği bulduk, döngüyü bitir
+                except Exception as e:
+                    print(f"[-] Resend API Bağlantı Hatası: {e}")
 
-        # Eğer hala içerik yoksa (API Key yanlışsa vs.), hata mesajını kaydet (2026 tuzağını bozar)
         if not icerik:
-            icerik = "HATA: Mail gövdesi çekilemedi. Resend API Key Render'a eklenmemiş veya Full Access yetkisi yok."
+            icerik = "HATA: Mail gövdesi çekilemedi. Resend API 404 (Bulunamadı) veya yetki hatası veriyor."
 
         tarih = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
