@@ -88,13 +88,14 @@ async def resend_webhook(request: Request):
         konu = mail_detay.get("subject", "Konu Yok")
         icerik = mail_detay.get("text") or mail_detay.get("html")
         
-        # Resend'in 404 (Geç kalma) hatasını önlemek için 4 tekrarlı ısrar döngüsü
+        # BÜTÜN SORUNU ÇÖZEN SATIR: Gelen mailleri aramak için araya '/receiving/' eklendi!
         if (not icerik or icerik == "Mail içeriği boş.") and email_id and RESEND_API_KEY:
             for deneme in range(4):
-                await asyncio.sleep(3) # Her denemede 3 saniye bekle
+                await asyncio.sleep(2) # Her denemede 2 saniye bekle
                 try:
                     headers = {"Authorization": f"Bearer {RESEND_API_KEY}"}
-                    r = requests.get(f"https://api.resend.com/emails/{email_id}", headers=headers, timeout=10)
+                    # ADRES DÜZELTİLDİ: api.resend.com/emails/receiving/...
+                    r = requests.get(f"https://api.resend.com/emails/receiving/{email_id}", headers=headers, timeout=10)
                     if r.status_code == 200:
                         email_verisi = r.json()
                         icerik = email_verisi.get("text") or email_verisi.get("html")
