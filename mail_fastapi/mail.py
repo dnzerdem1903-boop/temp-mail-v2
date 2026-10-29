@@ -9,7 +9,7 @@ import re
 import requests
 
 # --- AYARLAR ---
-BOT_TOKEN = "8383211881:AAF5Vi78HrS29DwMQz4RIME2e2jgYp9Xg6w "
+BOT_TOKEN = "8383211881:AAF5Vi78HrS29DwMQz4RIME2e2jgYp9Xg6w"
 DOMAIN = "tekmail.xyz"
 RENDER_URL = "https://temp-mail-v2-dpwj.onrender.com"
 # Resend paneli -> API Keys kısmından aldığın 're_...' ile başlayan anahtar:
