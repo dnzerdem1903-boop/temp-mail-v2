@@ -12,7 +12,7 @@ import os
 
 # --- AYARLAR ---
 BOT_TOKEN = "8383211881:AAF5Vi78HrS29DwMQz4RIME2e2jgYp9Xg6w"
-DOMAIN = "tekotpmail.xyz"
+DOMAIN = "teksefer.site"
 RENDER_URL = "https://temp-mail-v2-dpwj.onrender.com"
 
 # Şifre Render Environment'tan (çevre değişkenlerinden) çekiliyor
