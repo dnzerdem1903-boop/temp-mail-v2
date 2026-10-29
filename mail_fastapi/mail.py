@@ -73,8 +73,14 @@ async def resend_webhook(request: Request):
 
     if veri.get("type") == "email.received":
         mail_detay = veri.get("data", {})
-        kimden = mail_detay.get("from")
-        kime = mail_detay.get("to") 
+        
+        # Resend'den gelen kime/kimden verileri liste ise içinden ilk metni çıkarıyoruz
+        kime_ham = mail_detay.get("to")
+        kime = kime_ham[0] if isinstance(kime_ham, list) else kime_ham
+        
+        kimden_ham = mail_detay.get("from")
+        kimden = kimden_ham[0] if isinstance(kimden_ham, list) else kimden_ham
+        
         konu = mail_detay.get("subject", "Konu Yok")
         
         icerik_ham = mail_detay.get("text") or mail_detay.get("html") or "Mail içeriği boş."
@@ -83,16 +89,26 @@ async def resend_webhook(request: Request):
         
         conn = sqlite3.connect("tekmail.db")
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO mailler (kime, kimden, konu, icerik, tarih) VALUES (?, ?, ?, ?, ?)", (kime, kimden, konu, icerik, tarih))
         
-        cursor.execute("SELECT chat_id FROM kullanicilar WHERE mail_adresi=?", (kime,))
+        # Artık hepsi düz metin (string) olduğu için SQLite çökmeden kaydedecek
+        cursor.execute("INSERT INTO mailler (kime, kimden, konu, icerik, tarih) VALUES (?, ?, ?, ?, ?)", 
+                       (str(kime), str(kimden), str(konu), icerik, tarih))
+        
+        # Veritabanında Telegram chat_id eşleşmesini ararken de temiz metni kullanıyoruz
+        cursor.execute("SELECT chat_id FROM kullanicilar WHERE mail_adresi=?", (str(kime),))
         kullanici = cursor.fetchone()
         conn.commit()
         conn.close()
         
         if kullanici:
             chat_id = kullanici[0]
-            mesaj_metni = (f"📬 *YENİ MAİL GELDİ!*\n\n👤 *Kimden:* `{kimden}`\n🎯 *Kime:* `{kime}`\n📌 *Konu:* {konu}\n\n📝 *İçerik:*\n{icerik[:1000]}")
+            mesaj_metni = (
+                f"📬 *YENİ MAİL GELDİ!*\n\n"
+                f"👤 *Kimden:* `{kimden}`\n"
+                f"🎯 *Kime:* `{kime}`\n"
+                f"📌 *Konu:* {konu}\n\n"
+                f"📝 *İçerik:*\n{icerik[:1000]}"
+            )
             try:
                 bot.send_message(chat_id, mesaj_metni, parse_mode="Markdown")
             except Exception as e:
