@@ -1,33 +1,104 @@
 from fastapi import FastAPI, Request
 import uvicorn
+import sqlite3
+import random
+import string
+from datetime import datetime
+import telebot
+
+# --- AYARLAR ---
+BOT_TOKEN = "8383211881:AAF5Vi78HrS29DwMQz4RIME2e2jgYp9Xg6w"
+DOMAIN = "tekmail.xyz"
+# Senin Render adresini direkt buraya sabitledim
+RENDER_URL = "https://temp-mail-v2-dpwj.onrender.com" 
 
 app = FastAPI()
+bot = telebot.TeleBot(BOT_TOKEN)
 
-# Resend'in gelen mailleri fırlatacağı uç nokta
+# 1. VERİTABANI KURULUMU
+def veritabani_kur():
+    conn = sqlite3.connect("tekmail.db")
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS mailler (id INTEGER PRIMARY KEY AUTOINCREMENT, kime TEXT, kimden TEXT, konu TEXT, icerik TEXT, tarih TEXT)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS kullanicilar (chat_id TEXT, mail_adresi TEXT)''')
+    conn.commit()
+    conn.close()
+
+veritabani_kur()
+
+# 2. RASTGELE MAİL ÜRETİCİ
+def rastgele_mail_uret(uzunluk=8):
+    karakterler = string.ascii_lowercase + string.digits
+    rastgele_isim = ''.join(random.choice(karakterler) for _ in range(uzunluk))
+    return f"{rastgele_isim}@{DOMAIN}"
+
+# 3. TELEGRAM MESAJ CEVAPLARI
+@bot.message_handler(commands=['start'])
+def start_mesaji(message):
+    bot.reply_to(message, "Hoş geldin! Yeni bir geçici mail adresi almak için /yeni yazabilirsin.")
+
+@bot.message_handler(commands=['yeni'])
+def yeni_mail_ver(message):
+    chat_id = str(message.chat.id)
+    yeni_adres = rastgele_mail_uret()
+    
+    conn = sqlite3.connect("tekmail.db")
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM kullanicilar WHERE chat_id=?", (chat_id,))
+    cursor.execute("INSERT INTO kullanicilar (chat_id, mail_adresi) VALUES (?, ?)", (chat_id, yeni_adres))
+    conn.commit()
+    conn.close()
+    
+    bot.reply_to(message, f"✅ Yeni mail adresiniz oluşturuldu:\n\n`{yeni_adres}`\n\nBu adrese mail geldiğinde size anında bildireceğim!", parse_mode="Markdown")
+
+# 4. SİSTEM BAŞLARKEN TELEGRAM'A KANCAYI AT
+@app.on_event("startup")
+def startup_event():
+    bot.remove_webhook()
+    bot.set_webhook(url=f"{RENDER_URL}/telegram-kanca")
+    print("[+] Telegram Webhook başarıyla ayarlandı!")
+
+# 5. TELEGRAM'DAN GELEN KOMUTLARI BURADA YAKALIYORUZ
+@app.post("/telegram-kanca")
+async def telegram_webhook(request: Request):
+    json_str = await request.body()
+    update = telebot.types.Update.de_json(json_str.decode('utf-8'))
+    bot.process_new_updates([update])
+    return {"status": "ok"}
+
+# 6. RESEND'DEN GELEN MAİLLERİ BURADA YAKALIYORUZ
 @app.post("/gelen-mail")
 async def resend_webhook(request: Request):
-    # Resend'den gelen paketi açıyoruz
     veri = await request.json()
-    
-    # Gelen paketin türü "yeni mail" ise işleme alıyoruz
+
     if veri.get("type") == "email.received":
         mail_detay = veri.get("data", {})
-        
         kimden = mail_detay.get("from")
-        kime = mail_detay.get("to") # Bu senin ürettiğin geçici adres olacak
-        konu = mail_detay.get("subject")
-        icerik = mail_detay.get("text") or mail_detay.get("html")
+        kime = mail_detay.get("to") 
+        konu = mail_detay.get("subject", "Konu Yok")
         
-        print(f"\n[+] YENİ MAİL YAKALANDI!")
-        print(f" -> Kime Geldi: {kime}")
-        print(f" -> Kimden: {kimden}")
-        print(f" -> Konu: {konu}")
-        print(f" -> İçerik: {icerik[:200]}...") # Ekrana çok taşmasın diye ilk 200 karakter
+        icerik_ham = mail_detay.get("text") or mail_detay.get("html") or "Mail içeriği boş."
+        icerik = str(icerik_ham)
+        tarih = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        # İleride burada bu verileri alıp SQLite veritabanına kaydedeceğiz
+        conn = sqlite3.connect("tekmail.db")
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO mailler (kime, kimden, konu, icerik, tarih) VALUES (?, ?, ?, ?, ?)", (kime, kimden, konu, icerik, tarih))
         
-    return {"durum": "basarili", "mesaj": "Resend paketi alindi"}
+        cursor.execute("SELECT chat_id FROM kullanicilar WHERE mail_adresi=?", (kime,))
+        kullanici = cursor.fetchone()
+        conn.commit()
+        conn.close()
+        
+        if kullanici:
+            chat_id = kullanici[0]
+            mesaj_metni = (f"📬 *YENİ MAİL GELDİ!*\n\n👤 *Kimden:* `{kimden}`\n🎯 *Kime:* `{kime}`\n📌 *Konu:* {konu}\n\n📝 *İçerik:*\n{icerik[:1000]}")
+            try:
+                bot.send_message(chat_id, mesaj_metni, parse_mode="Markdown")
+            except Exception as e:
+                print(f"[-] Hata: {e}")
+                
+    return {"durum": "basarili"}
 
 if __name__ == "__main__":
-    # VPS'in IP adresi üzerinden 8000 portunu dış dünyaya açıyoruz
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=10000)
