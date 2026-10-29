@@ -7,13 +7,14 @@ from datetime import datetime
 import telebot
 import re
 import requests
+import asyncio
 
 # --- AYARLAR ---
 BOT_TOKEN = "8383211881:AAF5Vi78HrS29DwMQz4RIME2e2jgYp9Xg6w"
 DOMAIN = "tekotpmail.xyz"
 RENDER_URL = "https://temp-mail-v2-dpwj.onrender.com"
-# Resend paneli -> API Keys kısmından aldığın 're_...' ile başlayan anahtar:
-RESEND_API_KEY = "re_YZHRXGEY_5HuiABo9A74B4bkAZtNt8B8S"
+# DİKKAT: Bu API Key kesinlikle 'Full Access' yetkisiyle oluşturulmuş olmalı!
+RESEND_API_KEY = "re_7q2MifzS_CGJtifF2utB2nJQioiZPYPke"
 
 app = FastAPI()
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -72,7 +73,6 @@ async def resend_webhook(request: Request):
         mail_detay = veri.get("data", {})
         email_id = mail_detay.get("email_id")
         
-        # Adresleri ayrıştırma
         kime_ham = mail_detay.get("to")
         kime_str = str(kime_ham[0] if isinstance(kime_ham, list) else kime_ham).lower()
         kime_match = re.search(r'[\w\.-]+@[\w\.-]+', kime_str)
@@ -84,22 +84,24 @@ async def resend_webhook(request: Request):
         kimden = kimden_match.group(0) if kimden_match else kimden_str
         
         konu = mail_detay.get("subject", "Konu Yok")
-        
-        # İçeriği kontrol et; webhook gövdesinde yoksa Resend API üzerinden çek
         icerik = mail_detay.get("text") or mail_detay.get("html")
         
-        if (not icerik or icerik == "Mail içeriği boş.") and email_id and RESEND_API_KEY != "BURAYA_RESEND_API_KEY_YAPISTIR":
+        if (not icerik or icerik == "Mail içeriği boş.") and email_id and RESEND_API_KEY:
+            await asyncio.sleep(2) # Resend'in maili işlemesi için 2 saniye bekle
             try:
                 headers = {"Authorization": f"Bearer {RESEND_API_KEY}"}
-                r = requests.get(f"https://api.resend.com/emails/{email_id}", headers=headers, timeout=5)
+                r = requests.get(f"https://api.resend.com/emails/{email_id}", headers=headers, timeout=10)
                 if r.status_code == 200:
                     email_verisi = r.json()
                     icerik = email_verisi.get("text") or email_verisi.get("html")
+                else:
+                    print(f"[-] API Hatası: {r.status_code} - {r.text}")
             except Exception as e:
-                print(f"[-] Resend API'den mail gövdesi çekilemedi: {e}")
+                print(f"[-] Resend API Bağlantı Hatası: {e}")
 
+        # 2026 TUZAĞI BURADA BOZULDU: Artık JSON verisini string'e çevirip kaydetmiyoruz.
         if not icerik:
-            icerik = str(mail_detay)  # Hiçbir şey gelmezse tüm webhook JSON verisini sakla
+            icerik = "HATA: Mail godesi cekilemedi. Resend API Key 'Full Access' yetkisine sahip mi kontrol et."
 
         tarih = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
@@ -125,11 +127,10 @@ async def resend_webhook(request: Request):
             try:
                 bot.send_message(chat_id, mesaj_metni, parse_mode="Markdown")
             except Exception as e:
-                print(f"[-] Telegram gönderim hatası: {e}")
+                pass
             
     return {"durum": "basarili"}
 
-# Otomasyon için API uç noktaları
 @app.get("/api/yeni-mail")
 def api_yeni_mail():
     return {"mail_adresi": rastgele_mail_uret()}
