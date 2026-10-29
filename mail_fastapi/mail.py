@@ -5,11 +5,11 @@ import random
 import string
 from datetime import datetime
 import telebot
+import re  # <--- METİN AYIKLAMAK İÇİN YENİ EKLENDİ
 
 # --- AYARLAR ---
-BOT_TOKEN = "8383211881:AAF5Vi78HrS29DwMQz4RIME2e2jgYp9Xg6w"
+BOT_TOKEN = "BURAYA_BOTFATHERDAN_ALDIĞIN_TOKENI_YAPIŞTIR"
 DOMAIN = "tekmail.xyz"
-# Senin Render adresini direkt buraya sabitledim
 RENDER_URL = "https://temp-mail-v2-dpwj.onrender.com" 
 
 app = FastAPI()
@@ -74,12 +74,17 @@ async def resend_webhook(request: Request):
     if veri.get("type") == "email.received":
         mail_detay = veri.get("data", {})
         
-        # Resend'den gelen kime/kimden verileri liste ise içinden ilk metni çıkarıyoruz
+        # KİME KISMINI TEMİZLEME (Regex ile sadece saf e-posta adresini alıyoruz)
         kime_ham = mail_detay.get("to")
-        kime = kime_ham[0] if isinstance(kime_ham, list) else kime_ham
-        
+        kime_str = str(kime_ham[0] if isinstance(kime_ham, list) else kime_ham).lower()
+        kime_match = re.search(r'[\w\.-]+@[\w\.-]+', kime_str)
+        kime = kime_match.group(0) if kime_match else kime_str
+
+        # KİMDEN KISMINI TEMİZLEME
         kimden_ham = mail_detay.get("from")
-        kimden = kimden_ham[0] if isinstance(kimden_ham, list) else kimden_ham
+        kimden_str = str(kimden_ham[0] if isinstance(kimden_ham, list) else kimden_ham)
+        kimden_match = re.search(r'[\w\.-]+@[\w\.-]+', kimden_str)
+        kimden = kimden_match.group(0) if kimden_match else kimden_str
         
         konu = mail_detay.get("subject", "Konu Yok")
         
@@ -87,15 +92,14 @@ async def resend_webhook(request: Request):
         icerik = str(icerik_ham)
         tarih = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
+        print(f"\n[+] Mail İşleniyor... Hedef: {kime}")
+        
         conn = sqlite3.connect("tekmail.db")
         cursor = conn.cursor()
-        
-        # Artık hepsi düz metin (string) olduğu için SQLite çökmeden kaydedecek
         cursor.execute("INSERT INTO mailler (kime, kimden, konu, icerik, tarih) VALUES (?, ?, ?, ?, ?)", 
-                       (str(kime), str(kimden), str(konu), icerik, tarih))
+                       (kime, kimden, konu, icerik, tarih))
         
-        # Veritabanında Telegram chat_id eşleşmesini ararken de temiz metni kullanıyoruz
-        cursor.execute("SELECT chat_id FROM kullanicilar WHERE mail_adresi=?", (str(kime),))
+        cursor.execute("SELECT chat_id FROM kullanicilar WHERE mail_adresi=?", (kime,))
         kullanici = cursor.fetchone()
         conn.commit()
         conn.close()
@@ -111,9 +115,12 @@ async def resend_webhook(request: Request):
             )
             try:
                 bot.send_message(chat_id, mesaj_metni, parse_mode="Markdown")
+                print("[+] Telegram mesajı başarıyla gönderildi!")
             except Exception as e:
-                print(f"[-] Hata: {e}")
-                
+                print(f"[-] Telegram gönderim hatası: {e}")
+        else:
+            print(f"[-] DİKKAT: Veritabanında '{kime}' adresi için kayıtlı kullanıcı bulunamadı!")
+            
     return {"durum": "basarili"}
 
 if __name__ == "__main__":
