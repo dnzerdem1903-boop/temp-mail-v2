@@ -8,7 +8,7 @@ import telebot
 import re  # <--- METİN AYIKLAMAK İÇİN YENİ EKLENDİ
 
 # --- AYARLAR ---
-BOT_TOKEN = "BURAYA_BOTFATHERDAN_ALDIĞIN_TOKENI_YAPIŞTIR"
+BOT_TOKEN = "8383211881:AAF5Vi78HrS29DwMQz4RIME2e2jgYp9Xg6w"
 DOMAIN = "tekmail.xyz"
 RENDER_URL = "https://temp-mail-v2-dpwj.onrender.com" 
 
