@@ -8,13 +8,15 @@ import telebot
 import re
 import requests
 import asyncio
+import os  # API anahtarını güvenli çekmek için eklendi
 
 # --- AYARLAR ---
 BOT_TOKEN = "8383211881:AAF5Vi78HrS29DwMQz4RIME2e2jgYp9Xg6w"
 DOMAIN = "tekotpmail.xyz"
 RENDER_URL = "https://temp-mail-v2-dpwj.onrender.com"
-# DİKKAT: Bu API Key kesinlikle 'Full Access' yetkisiyle oluşturulmuş olmalı!
-RESEND_API_KEY = "re_7q2MifzS_CGJtifF2utB2nJQioiZPYPke"
+
+# DİKKAT: Şifreyi buraya yazmıyoruz. Render -> Environment kısmından çekecek!
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
 
 app = FastAPI()
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -86,6 +88,7 @@ async def resend_webhook(request: Request):
         konu = mail_detay.get("subject", "Konu Yok")
         icerik = mail_detay.get("text") or mail_detay.get("html")
         
+        # Eğer içerik yoksa, API Key ayarlanmışsa Resend API'den içeriği çek
         if (not icerik or icerik == "Mail içeriği boş.") and email_id and RESEND_API_KEY:
             await asyncio.sleep(2) # Resend'in maili işlemesi için 2 saniye bekle
             try:
@@ -99,9 +102,9 @@ async def resend_webhook(request: Request):
             except Exception as e:
                 print(f"[-] Resend API Bağlantı Hatası: {e}")
 
-        # 2026 TUZAĞI BURADA BOZULDU: Artık JSON verisini string'e çevirip kaydetmiyoruz.
+        # Eğer hala içerik yoksa (API Key yanlışsa vs.), hata mesajını kaydet (2026 tuzağını bozar)
         if not icerik:
-            icerik = "HATA: Mail godesi cekilemedi. Resend API Key 'Full Access' yetkisine sahip mi kontrol et."
+            icerik = "HATA: Mail gövdesi çekilemedi. Resend API Key Render'a eklenmemiş veya Full Access yetkisi yok."
 
         tarih = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
